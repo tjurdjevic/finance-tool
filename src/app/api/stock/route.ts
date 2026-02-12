@@ -23,6 +23,7 @@ export async function GET(request: NextRequest) {
           "summaryDetail",
           "financialData",
           "defaultKeyStatistics",
+          "summaryProfile",
         ],
       }),
       yahooFinance
@@ -71,6 +72,7 @@ export async function GET(request: NextRequest) {
       netIncome: keyStats?.netIncomeToCommon ?? null,
       profitMargin: financial?.profitMargins ?? null,
       roic,
+      businessSummary: summary.summaryProfile?.longBusinessSummary ?? null,
     };
 
     return NextResponse.json(data);
