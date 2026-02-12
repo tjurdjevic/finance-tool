@@ -55,7 +55,25 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
+type Tab = "headlines" | "holdings" | "portfolio" | "search";
+
+const tabs: { key: Tab; label: string }[] = [
+  { key: "headlines", label: "Headlines" },
+  { key: "holdings", label: "Holdings" },
+  { key: "portfolio", label: "Portfolio" },
+  { key: "search", label: "Search" },
+];
+
+function TabPlaceholder({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <p className="text-zinc-500">{message}</p>
+    </div>
+  );
+}
+
 export default function Dashboard() {
+  const [activeTab, setActiveTab] = useState<Tab>("search");
   const [ticker, setTicker] = useState("");
   const [data, setData] = useState<StockData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,14 +112,41 @@ export default function Dashboard() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
       {/* Header */}
       <header className="border-b border-zinc-800/60">
-        <div className="mx-auto max-w-3xl px-6 py-5">
+        <div className="mx-auto max-w-3xl px-6 pt-5 pb-0">
           <h1 className="text-lg font-semibold tracking-tight text-zinc-50">
             Buffett Analyzer
           </h1>
+          <nav className="mt-4 flex gap-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`rounded-t-md px-4 py-2 text-sm font-medium transition-colors ${
+                  activeTab === tab.key
+                    ? "bg-zinc-900 text-zinc-50"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
-      {/* Search */}
+      {/* Tab content */}
+      {activeTab === "headlines" && (
+        <TabPlaceholder message="Coming soon — macro news, earnings, market trends" />
+      )}
+      {activeTab === "holdings" && (
+        <TabPlaceholder message="Coming soon — news for your watchlist" />
+      )}
+      {activeTab === "portfolio" && (
+        <TabPlaceholder message="Coming soon — your positions" />
+      )}
+
+      {/* Search tab */}
+      {activeTab !== "search" ? null : <>
       <div className="mx-auto max-w-3xl px-6 pt-10 pb-2">
         <form onSubmit={handleSearch} className="flex gap-3">
           <input
@@ -218,6 +263,13 @@ export default function Dashboard() {
                 value={data.roic !== null ? formatPercent(data.roic) : "\u2014"}
               />
             </div>
+
+            {/* Kill Chain Analysis button */}
+            <div className="mt-8">
+              <button className="w-full rounded-lg bg-zinc-100 py-3.5 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-300">
+                Run Kill Chain Analysis &rarr;
+              </button>
+            </div>
           </div>
         )}
 
@@ -233,6 +285,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
