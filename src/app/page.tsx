@@ -4,6 +4,21 @@ import { useState, useEffect, useCallback, FormEvent } from "react";
 
 // --- Types ---
 
+interface WatchlistItem {
+  id: string;
+  ticker: string;
+  company_name: string;
+  added_at: string;
+}
+
+interface QuoteData {
+  ticker: string;
+  price: number | null;
+  change: number | null;
+  changePercent: number | null;
+  currency: string;
+}
+
 interface StockData {
   companyName: string;
   ticker: string;
@@ -266,24 +281,191 @@ function HeadlinesPanel() {
   );
 }
 
-function HoldingsPanel() {
+function WatchButton({
+  ticker: tickerSymbol,
+  companyName,
+  onAdd,
+}: {
+  ticker: string;
+  companyName: string;
+  onAdd: (ticker: string, companyName: string) => Promise<void>;
+}) {
+  const [adding, setAdding] = useState(false);
+
+  return (
+    <button
+      disabled={adding}
+      onClick={async (e) => {
+        e.stopPropagation();
+        setAdding(true);
+        try {
+          await onAdd(tickerSymbol, companyName);
+        } catch {
+          // Error handled upstream
+        } finally {
+          setAdding(false);
+        }
+      }}
+      className="px-2 py-0.5 text-[9px] font-mono font-bold tracking-wide border border-zinc-600 text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors rounded-sm disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {adding ? "..." : "+ WATCH"}
+    </button>
+  );
+}
+
+function HoldingsPanel({
+  watchlist,
+  loading,
+  quotes,
+  onRemove,
+  onSearch,
+  onAdd,
+}: {
+  watchlist: WatchlistItem[];
+  loading: boolean;
+  quotes: Record<string, QuoteData>;
+  onRemove: (id: string) => void;
+  onSearch: (ticker: string) => void;
+  onAdd: (ticker: string, companyName: string) => Promise<void>;
+}) {
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addTicker, setAddTicker] = useState("");
+  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+
+  async function handleManualAdd(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = addTicker.trim().toUpperCase();
+    if (!trimmed) return;
+
+    setAddLoading(true);
+    setAddError(null);
+    try {
+      const res = await fetch(`/api/stock?ticker=${encodeURIComponent(trimmed)}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Invalid ticker");
+      await onAdd(json.ticker, json.companyName);
+      setAddTicker("");
+      setShowAddForm(false);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Failed to add");
+    } finally {
+      setAddLoading(false);
+    }
+  }
+
   return (
     <div className="flex flex-col">
       <div className="border-b border-zinc-800 px-3 py-2 flex items-center justify-between">
         <h2 className="text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
-          Your Holdings
+          Watchlist
         </h2>
-        <button className="flex h-5 w-5 items-center justify-center rounded border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 transition-colors text-xs">
-          +
+        <button
+          onClick={() => { setShowAddForm(!showAddForm); setAddError(null); }}
+          className="flex h-5 w-5 items-center justify-center rounded border border-zinc-700 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300 transition-colors text-xs"
+        >
+          {showAddForm ? "\u2212" : "+"}
         </button>
       </div>
-      <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 text-center">
-        <div className="h-8 w-8 rounded border border-dashed border-zinc-700 flex items-center justify-center text-zinc-600 mb-3">
-          <span className="text-lg leading-none">+</span>
+
+      {/* Inline add form */}
+      {showAddForm && (
+        <div className="border-b border-zinc-800 px-3 py-2">
+          <form onSubmit={handleManualAdd} className="flex gap-1.5">
+            <input
+              type="text"
+              value={addTicker}
+              onChange={(e) => setAddTicker(e.target.value.toUpperCase())}
+              placeholder="TICKER"
+              spellCheck={false}
+              className="flex-1 min-w-0 border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] font-mono text-zinc-100 placeholder:text-zinc-600 focus:border-zinc-600 focus:outline-none transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={addLoading || !addTicker.trim()}
+              className="px-2.5 py-1 text-[10px] font-mono font-semibold bg-zinc-100 text-zinc-900 hover:bg-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+            >
+              {addLoading ? "..." : "ADD"}
+            </button>
+          </form>
+          {addError && (
+            <p className="text-[10px] text-red-400 mt-1.5 font-mono">{addError}</p>
+          )}
         </div>
-        <p className="text-xs text-zinc-500">Add stocks to your watchlist</p>
-        <p className="text-[10px] text-zinc-700 mt-1">Track positions and get alerts</p>
-      </div>
+      )}
+
+      {/* Loading state */}
+      {loading && (
+        <div className="flex items-center justify-center py-8 text-zinc-500">
+          <svg className="mr-2 h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-[10px] font-mono">Loading...</span>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && watchlist.length === 0 && (
+        <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 text-center">
+          <div className="h-8 w-8 rounded border border-dashed border-zinc-700 flex items-center justify-center text-zinc-600 mb-3">
+            <span className="text-lg leading-none">+</span>
+          </div>
+          <p className="text-xs text-zinc-500">Add stocks to your watchlist</p>
+          <p className="text-[10px] text-zinc-700 mt-1">Track positions and get alerts</p>
+        </div>
+      )}
+
+      {/* Watchlist items */}
+      {!loading && watchlist.length > 0 && (
+        <div className="flex-1 divide-y divide-zinc-800/60">
+          {watchlist.map((item) => {
+            const quote = quotes[item.ticker];
+            const changePercent = quote?.changePercent;
+            const isUp = changePercent !== null && changePercent !== undefined && changePercent >= 0;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => onSearch(item.ticker)}
+                className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-zinc-900/50 transition-colors text-left group"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-mono font-bold text-zinc-200">
+                      {item.ticker}
+                    </span>
+                    <span className="text-[10px] text-zinc-600 truncate">
+                      {item.company_name}
+                    </span>
+                  </div>
+                  {quote && quote.price !== null && (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] font-mono text-zinc-300">
+                        ${quote.price.toFixed(2)}
+                      </span>
+                      {changePercent !== null && changePercent !== undefined && (
+                        <span className={`text-[10px] font-mono font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+                          {isUp ? "+" : ""}{changePercent.toFixed(2)}%
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
+                  className="flex h-5 w-5 items-center justify-center rounded text-zinc-700 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+                  title="Remove from watchlist"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1318,6 +1500,10 @@ export default function Dashboard() {
   const [memosLoading, setMemosLoading] = useState(true);
   const [viewingMemo, setViewingMemo] = useState<SavedMemo | null>(null);
 
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(true);
+  const [quotes, setQuotes] = useState<Record<string, QuoteData>>({});
+
   useEffect(() => {
     async function fetchMemos() {
       try {
@@ -1334,6 +1520,52 @@ export default function Dashboard() {
     }
     fetchMemos();
   }, []);
+
+  // Fetch watchlist on mount
+  useEffect(() => {
+    async function fetchWatchlist() {
+      try {
+        const res = await fetch("/api/watchlist");
+        if (res.ok) {
+          const data = await res.json();
+          setWatchlist(data);
+        }
+      } catch {
+        // Silently fail
+      } finally {
+        setWatchlistLoading(false);
+      }
+    }
+    fetchWatchlist();
+  }, []);
+
+  // Fetch quotes when watchlist changes + 60s auto-refresh
+  useEffect(() => {
+    if (watchlist.length === 0) {
+      setQuotes({});
+      return;
+    }
+
+    const tickers = watchlist.map((w) => w.ticker).join(",");
+
+    async function fetchQuotes() {
+      try {
+        const res = await fetch(`/api/quotes?tickers=${encodeURIComponent(tickers)}`);
+        if (res.ok) {
+          const data: QuoteData[] = await res.json();
+          const map: Record<string, QuoteData> = {};
+          for (const q of data) map[q.ticker] = q;
+          setQuotes(map);
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+
+    fetchQuotes();
+    const interval = setInterval(fetchQuotes, 60000);
+    return () => clearInterval(interval);
+  }, [watchlist]);
 
   async function handleSearch(e: FormEvent) {
     e.preventDefault();
@@ -1399,6 +1631,60 @@ export default function Dashboard() {
       setKillChainStep(step);
     }
   }
+
+  async function addToWatchlist(tickerSymbol: string, companyName: string) {
+    try {
+      const res = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ticker: tickerSymbol, company_name: companyName }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to add");
+      setWatchlist((prev) => [json, ...prev]);
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  function removeFromWatchlist(id: string) {
+    setWatchlist((prev) => prev.filter((w) => w.id !== id));
+    fetch("/api/watchlist", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    }).catch(() => {
+      // Re-fetch on failure to restore consistency
+      fetch("/api/watchlist")
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => { if (data) setWatchlist(data); })
+        .catch(() => {});
+    });
+  }
+
+  function handleWatchlistSearch(tickerSymbol: string) {
+    setTicker(tickerSymbol);
+    setLoading(true);
+    setError(null);
+    setData(null);
+    setKillChainActive(false);
+    setViewingMemo(null);
+
+    fetch(`/api/stock?ticker=${encodeURIComponent(tickerSymbol)}`)
+      .then(async (res) => {
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Failed to fetch data");
+        setData(json);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
+
+  const watchlistTickers = new Set(watchlist.map((w) => w.ticker));
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100 font-sans overflow-hidden">
@@ -1487,9 +1773,18 @@ export default function Dashboard() {
                     {/* Company header */}
                     <div className="mb-4 flex items-end justify-between">
                       <div>
-                        <h2 className="text-lg font-semibold text-zinc-50 leading-tight">
-                          {data.companyName}
-                        </h2>
+                        <div className="flex items-center gap-2.5">
+                          <h2 className="text-lg font-semibold text-zinc-50 leading-tight">
+                            {data.companyName}
+                          </h2>
+                          {watchlistTickers.has(data.ticker) ? (
+                            <span className="px-2 py-0.5 text-[9px] font-mono font-bold tracking-wide border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 rounded-sm">
+                              WATCHING
+                            </span>
+                          ) : (
+                            <WatchButton ticker={data.ticker} companyName={data.companyName} onAdd={addToWatchlist} />
+                          )}
+                        </div>
                         <p className="font-mono text-xs text-zinc-500">
                           {data.ticker} &middot; {data.currency}
                         </p>
@@ -1559,9 +1854,16 @@ export default function Dashboard() {
           )}
         </main>
 
-        {/* Right: Holdings */}
+        {/* Right: Watchlist */}
         <aside className="w-full lg:w-1/4 border-t lg:border-t-0 lg:border-l border-zinc-800 overflow-y-auto shrink-0">
-          <HoldingsPanel />
+          <HoldingsPanel
+            watchlist={watchlist}
+            loading={watchlistLoading}
+            quotes={quotes}
+            onRemove={removeFromWatchlist}
+            onSearch={handleWatchlistSearch}
+            onAdd={addToWatchlist}
+          />
         </aside>
       </div>
     </div>
