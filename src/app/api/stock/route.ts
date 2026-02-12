@@ -73,6 +73,7 @@ export async function GET(request: NextRequest) {
       profitMargin: financial?.profitMargins ?? null,
       roic,
       businessSummary: summary.summaryProfile?.longBusinessSummary ?? null,
+      website: summary.summaryProfile?.website ?? null,
     };
 
     return NextResponse.json(data);

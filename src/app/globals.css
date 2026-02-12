@@ -29,3 +29,18 @@ body {
 .ticker-scroll {
   animation: ticker-scroll 30s linear infinite;
 }
+
+@keyframes step-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.step-fade-in {
+  animation: step-fade-in 0.3s ease-out;
+}
