@@ -264,19 +264,22 @@ function TickerTape() {
     return () => clearInterval(interval);
   }, []);
 
-  const doubled = [...items, ...items];
+  const renderItems = (keyPrefix: string) =>
+    items.map((t, i) => (
+      <span key={`${keyPrefix}-${i}`} className="inline-flex items-center gap-1.5 px-4 text-xs font-mono shrink-0">
+        <span className="text-zinc-400 font-medium">{t.symbol}</span>
+        <span className="text-zinc-300">{t.value}</span>
+        <span className={t.up ? "text-emerald-400" : "text-red-400"}>
+          {t.change}
+        </span>
+      </span>
+    ));
+
   return (
     <div className="border-b border-zinc-800 bg-zinc-950 overflow-hidden">
       <div className="ticker-scroll flex whitespace-nowrap py-1.5">
-        {doubled.map((t, i) => (
-          <span key={i} className="inline-flex items-center gap-1.5 px-4 text-xs font-mono">
-            <span className="text-zinc-400 font-medium">{t.symbol}</span>
-            <span className="text-zinc-300">{t.value}</span>
-            <span className={t.up ? "text-emerald-400" : "text-red-400"}>
-              {t.change}
-            </span>
-          </span>
-        ))}
+        <div className="flex shrink-0 min-w-full justify-around">{renderItems("a")}</div>
+        <div className="flex shrink-0 min-w-full justify-around">{renderItems("b")}</div>
       </div>
     </div>
   );
