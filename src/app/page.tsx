@@ -33,6 +33,7 @@ interface StockData {
   netIncome: number | null;
   profitMargin: number | null;
   roic: number | null;
+  roicNote: string | null;
   businessSummary: string | null;
   website: string | null;
 }
@@ -122,17 +123,20 @@ function getLogoDomain(website: string | null): string | null {
   }
 }
 
-// --- Static data ---
+// --- Types (ticker tape) ---
 
-const tickerTape = [
-  { symbol: "S&P 500", value: "6,012.34", change: "+0.42%", up: true },
-  { symbol: "NASDAQ", value: "19,234.56", change: "-0.18%", up: false },
-  { symbol: "DOW", value: "43,891.02", change: "+0.31%", up: true },
-  { symbol: "10Y UST", value: "4.28%", change: "+0.03", up: false },
-  { symbol: "VIX", value: "14.32", change: "-1.21%", up: true },
-  { symbol: "BTC", value: "97,412.00", change: "+2.14%", up: true },
-  { symbol: "GOLD", value: "2,934.50", change: "+0.08%", up: true },
-  { symbol: "OIL", value: "71.23", change: "-0.54%", up: false },
+interface TickerTapeItem {
+  symbol: string;
+  value: string;
+  change: string;
+  up: boolean;
+}
+
+const TICKER_TAPE_FALLBACK: TickerTapeItem[] = [
+  { symbol: "S&P 500", value: "—", change: "—", up: true },
+  { symbol: "NASDAQ", value: "—", change: "—", up: true },
+  { symbol: "DOW", value: "—", change: "—", up: true },
+  { symbol: "10Y UST", value: "—", change: "—", up: true },
 ];
 
 const headlines = [
@@ -226,9 +230,9 @@ function useStepAnalysis<T>(step: number, currentStep: number, data: StockData) 
 
 // --- Shared Components ---
 
-function MetricCard({ label, value }: { label: string; value: string }) {
+function MetricCard({ label, value, tooltip }: { label: string; value: string; tooltip?: string | null }) {
   return (
-    <div className="border border-zinc-800 bg-zinc-900/50 px-3 py-2.5">
+    <div className="border border-zinc-800 bg-zinc-900/50 px-3 py-2.5" title={tooltip ?? undefined}>
       <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
         {label}
       </p>
@@ -240,11 +244,31 @@ function MetricCard({ label, value }: { label: string; value: string }) {
 }
 
 function TickerTape() {
-  const items = [...tickerTape, ...tickerTape];
+  const [items, setItems] = useState<TickerTapeItem[]>(TICKER_TAPE_FALLBACK);
+
+  useEffect(() => {
+    async function fetchTape() {
+      try {
+        const res = await fetch("/api/ticker-tape");
+        if (res.ok) {
+          const data: TickerTapeItem[] = await res.json();
+          if (data.length > 0) setItems(data);
+        }
+      } catch {
+        // Keep fallback
+      }
+    }
+
+    fetchTape();
+    const interval = setInterval(fetchTape, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const doubled = [...items, ...items];
   return (
     <div className="border-b border-zinc-800 bg-zinc-950 overflow-hidden">
       <div className="ticker-scroll flex whitespace-nowrap py-1.5">
-        {items.map((t, i) => (
+        {doubled.map((t, i) => (
           <span key={i} className="inline-flex items-center gap-1.5 px-4 text-xs font-mono">
             <span className="text-zinc-400 font-medium">{t.symbol}</span>
             <span className="text-zinc-300">{t.value}</span>
@@ -1074,7 +1098,7 @@ function KillChainFlow({
 
                 <div className="grid grid-cols-2 gap-px bg-zinc-800 border border-zinc-800 sm:grid-cols-3 mb-5">
                   <MetricCard label="Margin" value={formatPercent(data.profitMargin)} />
-                  <MetricCard label="ROIC" value={data.roic !== null ? formatPercent(data.roic) : "\u2014"} />
+                  <MetricCard label="ROIC" value={data.roic !== null ? formatPercent(data.roic) : "N/A"} tooltip={data.roic === null ? (data.roicNote ?? "Insufficient data to calculate ROIC") : data.roicNote} />
                   <MetricCard label="Mkt Cap" value={formatCurrency(data.marketCap, true)} />
                 </div>
 
@@ -1810,7 +1834,7 @@ export default function Dashboard() {
                       <MetricCard label="Revenue" value={formatCurrency(data.revenue, true)} />
                       <MetricCard label="Net Income" value={formatCurrency(data.netIncome, true)} />
                       <MetricCard label="Margin" value={formatPercent(data.profitMargin)} />
-                      <MetricCard label="ROIC" value={data.roic !== null ? formatPercent(data.roic) : "\u2014"} />
+                      <MetricCard label="ROIC" value={data.roic !== null ? formatPercent(data.roic) : "N/A"} tooltip={data.roic === null ? (data.roicNote ?? "Insufficient data to calculate ROIC") : data.roicNote} />
                     </div>
 
                     {/* Kill Chain Analysis button */}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import YahooFinance from "yahoo-finance2";
 
-const yahooFinance = new YahooFinance();
+const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 export async function GET(request: NextRequest) {
   const ticker = request.nextUrl.searchParams.get("ticker");
@@ -16,7 +16,9 @@ export async function GET(request: NextRequest) {
     const twoYearsAgo = new Date();
     twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
 
-    const [summary, fundamentals] = await Promise.all([
+    // Fetch quoteSummary + fundamentalsTimeSeries (balance-sheet and financials separately
+    // because module:"all" fails for some tickers when one module has validation issues)
+    const [summary, balanceSheet, financials] = await Promise.all([
       yahooFinance.quoteSummary(symbol, {
         modules: [
           "price",
@@ -30,7 +32,14 @@ export async function GET(request: NextRequest) {
         .fundamentalsTimeSeries(symbol, {
           period1: twoYearsAgo,
           type: "annual",
-          module: "all",
+          module: "balance-sheet",
+        })
+        .catch(() => null),
+      yahooFinance
+        .fundamentalsTimeSeries(symbol, {
+          period1: twoYearsAgo,
+          type: "annual",
+          module: "financials",
         })
         .catch(() => null),
     ]);
@@ -40,22 +49,48 @@ export async function GET(request: NextRequest) {
     const financial = summary.financialData;
     const keyStats = summary.defaultKeyStatistics;
 
-    // Calculate ROIC from fundamentals time series data
-    // ROIC = NOPAT / Invested Capital
+    // Calculate ROIC = NOPAT / Invested Capital
+    // Strategy: try multiple data sources for each component
     let roic: number | null = null;
-    if (fundamentals && fundamentals.length > 0) {
-      const latest = fundamentals[fundamentals.length - 1] as Record<
-        string,
-        unknown
-      >;
-      const operatingIncome = latest.operatingIncome as number | undefined;
-      const investedCapital = latest.investedCapital as number | undefined;
-      const taxRate = latest.taxRateForCalcs as number | undefined;
+    let roicNote: string | null = null;
 
-      if (operatingIncome && investedCapital && investedCapital > 0) {
-        const nopat = operatingIncome * (1 - (taxRate ?? 0.21));
-        roic = nopat / investedCapital;
-      }
+    const latestBs = balanceSheet?.length
+      ? (balanceSheet[balanceSheet.length - 1] as Record<string, unknown>)
+      : null;
+    const latestFin = financials?.length
+      ? (financials[financials.length - 1] as Record<string, unknown>)
+      : null;
+
+    // 1) Operating income: prefer fundamentalsTimeSeries financials, fall back to quoteSummary
+    let operatingIncome: number | null = null;
+    if (latestFin?.operatingIncome) {
+      operatingIncome = latestFin.operatingIncome as number;
+    } else if (financial?.operatingMargins && financial?.totalRevenue) {
+      operatingIncome = financial.operatingMargins * financial.totalRevenue;
+      roicNote = "Operating income estimated from margins";
+    }
+
+    // 2) Invested capital: prefer direct value, fall back to totalAssets - currentLiabilities
+    let investedCapital: number | null = null;
+    if (latestBs?.investedCapital) {
+      investedCapital = latestBs.investedCapital as number;
+    } else if (latestBs?.totalAssets && latestBs?.currentLiabilities) {
+      investedCapital =
+        (latestBs.totalAssets as number) -
+        (latestBs.currentLiabilities as number);
+      roicNote = roicNote
+        ? `${roicNote}; invested capital estimated from total assets - current liabilities`
+        : "Invested capital estimated from total assets - current liabilities";
+    }
+
+    // 3) Tax rate: use fundamentals value or default 21%
+    const taxRate = (latestFin?.taxRateForCalcs as number | undefined) ?? 0.21;
+
+    if (operatingIncome && investedCapital && investedCapital > 0) {
+      const nopat = operatingIncome * (1 - taxRate);
+      roic = nopat / investedCapital;
+    } else {
+      roicNote = "Insufficient data to calculate ROIC";
     }
 
     const data = {
@@ -72,6 +107,7 @@ export async function GET(request: NextRequest) {
       netIncome: keyStats?.netIncomeToCommon ?? null,
       profitMargin: financial?.profitMargins ?? null,
       roic,
+      roicNote,
       businessSummary: summary.summaryProfile?.longBusinessSummary ?? null,
       website: summary.summaryProfile?.website ?? null,
     };
