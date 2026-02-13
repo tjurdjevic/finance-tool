@@ -425,10 +425,10 @@ function HoldingsPanel({
             const isUp = changePercent !== null && changePercent !== undefined && changePercent >= 0;
 
             return (
-              <button
+              <div
                 key={item.id}
                 onClick={() => onSearch(item.ticker)}
-                className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-zinc-900/50 transition-colors text-left group"
+                className="w-full px-3 py-2.5 flex items-center gap-2.5 hover:bg-zinc-900/50 transition-colors text-left group cursor-pointer"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -461,7 +461,7 @@ function HoldingsPanel({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -1700,7 +1700,7 @@ export default function Dashboard() {
       <TickerTape />
 
       {/* 3-column layout */}
-      <div className="flex flex-1 overflow-hidden flex-col lg:flex-row">
+      <div className="flex flex-1 overflow-y-auto lg:overflow-hidden flex-col lg:flex-row">
         {/* Left: Headlines */}
         <aside className="w-full lg:w-1/4 border-b lg:border-b-0 lg:border-r border-zinc-800 overflow-y-auto shrink-0">
           <HeadlinesPanel />
